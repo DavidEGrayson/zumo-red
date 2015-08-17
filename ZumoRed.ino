@@ -14,6 +14,9 @@ Zumo32U4ButtonB buttonB;
 Zumo32U4ButtonC buttonC;
 bool motorsEnabled = false;
 
+uint16_t brightnessLow = 50;
+uint16_t brightnessHigh = 50;
+
 class SmartProximitySensors
 {
 public:
@@ -22,8 +25,6 @@ public:
 
   bool frontLeft = 0;
   bool frontRight = 0;
-
-  uint16_t brightness = 50;
 
   void init()
   {
@@ -35,7 +36,7 @@ public:
     delayMicroseconds(pulseOffTimeUs);
   }
 
-  uint8_t sense()
+  uint8_t sense(uint16_t brightness)
   {
     Zumo32U4IRPulses::start(Zumo32U4IRPulses::Left, brightness);
     delayMicroseconds(pulseOnTimeUs);
@@ -59,43 +60,72 @@ void setup()
 
 void loop()
 {
+  bool leftCloser = false;
+  bool rightCloser = false;
+
+  proxSensors.sense(brightnessLow);
   if (proxSensors.frontLeft == proxSensors.frontRight)
   {
       if (proxSensors.frontLeft)
       {
-        proxSensors.brightness -= 2;
+        brightnessLow -= 2;
       }
       else
       {
-        proxSensors.brightness += 2;
+        brightnessLow += 2;
       }
-      proxSensors.brightness = constrain(proxSensors.brightness,
-        brightnessMin, brightnessMax);
   }
+  else
+  {
+    leftCloser = proxSensors.frontLeft;
+    brightnessLow -= 2;
+  }
+  brightnessLow = constrain(brightnessLow, brightnessMin, brightnessMax);
 
-  proxSensors.sense();
+  proxSensors.sense(brightnessHigh);
+  if (proxSensors.frontLeft == proxSensors.frontRight)
+  {
+      if (proxSensors.frontLeft)
+      {
+        brightnessHigh -= 2;
+      }
+      else
+      {
+        brightnessHigh += 2;
+      }
+  }
+  else
+  {
+    rightCloser = proxSensors.frontRight;
+    brightnessHigh += 2;
+  }
+  brightnessHigh = constrain(brightnessHigh, brightnessMin, brightnessMax);
 
   lcd.gotoXY(0, 0);
-  lcd.print(proxSensors.brightness);
+  lcd.print(brightnessLow);
   lcd.print(F("  "));
-  lcd.gotoXY(5, 0);
-  lcd.print(proxSensors.frontLeft);
-  lcd.gotoXY(7, 0);
-  lcd.print(proxSensors.frontRight);
+  lcd.gotoXY(0, 1);
+  lcd.print(brightnessHigh);
+  lcd.print(F("  "));
 
   if (motorsEnabled)
   {
-    if (proxSensors.frontLeft == proxSensors.frontRight)
+    if (brightnessHigh > brightnessLow && (leftCloser ^ rightCloser))
     {
-      motors.setSpeeds(0, 0);
-    }
-    else if (proxSensors.frontLeft)
-    {
-      motors.setSpeeds(-400, 400);
+      int32_t speed = (brightnessHigh - brightnessLow) * (int32_t)1600 / brightnessLow;
+      speed = constrain(speed, 200, 400);
+      if (leftCloser)
+      {
+        motors.setSpeeds(-speed, speed);
+      }
+      else
+      {
+        motors.setSpeeds(speed, -speed);
+      }
     }
     else
     {
-      motors.setSpeeds(400, -400);
+      motors.setSpeeds(0, 0);
     }
   }
   else
