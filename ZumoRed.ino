@@ -1,6 +1,12 @@
 #include <Wire.h>
 #include <Zumo32U4.h>
 
+enum Direction
+{
+  DirectionLeft,
+  DirectionRight,
+};
+
 const uint16_t brightnessMin = 2;
 const uint16_t brightnessMax = 200;
 
@@ -20,6 +26,10 @@ bool detectedLastTimeLeft = false;
 bool detectedLastTimeRight = false;
 uint8_t okLeft = 0;
 uint8_t okRight = 0;
+
+// scanDir is the direction the robot should turn the next time
+// it scans for an opponent.
+Direction scanDir = DirectionLeft;
 
 class SmartProximitySensors
 {
@@ -114,23 +124,40 @@ void loop()
   lcd.gotoXY(5, 1);
   lcd.print(okLeft);
 
+  bool objectSeen = (okLeft && brightnessLeft < 150) || (okRight && brightnessRight < 150);
+  ledYellow(objectSeen);
+
   if (motorsEnabled)
   {
-    if (brightnessLeft < brightnessRight && okLeft)
+    if (objectSeen)
     {
-      int32_t speed = (brightnessRight - brightnessLeft) * (int32_t)800 / brightnessLeft;
-      speed = constrain(speed, 200, 400);
-      motors.setSpeeds(-speed, speed);
-    }
-    else if (brightnessLeft > brightnessRight && okRight)
-    {
-      int32_t speed = (brightnessLeft - brightnessRight) * (int32_t)800 / brightnessRight;
-      speed = constrain(speed, 200, 400);
-      motors.setSpeeds(speed, -speed);
+      if (brightnessLeft < brightnessRight && okLeft)
+      {
+        int32_t speed = (brightnessRight - brightnessLeft) * (int32_t)800 / brightnessLeft;
+        speed = constrain(speed, 200, 200);
+        motors.setSpeeds(-speed, speed);
+      }
+      else if (brightnessLeft > brightnessRight && okRight)
+      {
+        int32_t speed = (brightnessLeft - brightnessRight) * (int32_t)800 / brightnessRight;
+        speed = constrain(speed, 200, 200);
+        motors.setSpeeds(speed, -speed);
+      }
+      else
+      {
+        motors.setSpeeds(0, 0);
+      }
     }
     else
     {
-      motors.setSpeeds(0, 0);
+      if (scanDir == DirectionLeft)
+      {
+        motors.setSpeeds(-200, 200);
+      }
+      else
+      {
+        motors.setSpeeds(200, -200);
+      }
     }
   }
   else
