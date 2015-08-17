@@ -14,8 +14,12 @@ Zumo32U4ButtonB buttonB;
 Zumo32U4ButtonC buttonC;
 bool motorsEnabled = false;
 
-uint16_t brightnessLow = 50;
-uint16_t brightnessHigh = 50;
+uint16_t brightnessLeft = 50;
+uint16_t brightnessRight = 50;
+bool detectedLastTimeLeft = false;
+bool detectedLastTimeRight = false;
+uint8_t okLeft = 0;
+uint8_t okRight = 0;
 
 class SmartProximitySensors
 {
@@ -36,19 +40,24 @@ public:
     delayMicroseconds(pulseOffTimeUs);
   }
 
-  uint8_t sense(uint16_t brightness)
+  bool senseDir(uint16_t brightness, Zumo32U4IRPulses::Direction dir)
   {
-    Zumo32U4IRPulses::start(Zumo32U4IRPulses::Left, brightness);
+    Zumo32U4IRPulses::start(dir, brightness);
     delayMicroseconds(pulseOnTimeUs);
-    frontLeft = !FastGPIO::Pin<IO_F1>::isInputHigh();
+    bool result = !FastGPIO::Pin<IO_F1>::isInputHigh();
     Zumo32U4IRPulses::stop();
     delayMicroseconds(pulseOffTimeUs);
+    return result;
+  }
 
-    Zumo32U4IRPulses::start(Zumo32U4IRPulses::Right, brightness);
-    delayMicroseconds(pulseOnTimeUs);
-    frontRight = !FastGPIO::Pin<IO_F1>::isInputHigh();
-    Zumo32U4IRPulses::stop();
-    delayMicroseconds(pulseOffTimeUs);
+  bool senseLeft(uint16_t brightness)
+  {
+    return senseDir(brightness, Zumo32U4IRPulses::Left);
+  }
+
+  bool senseRight(uint16_t brightness)
+  {
+    return senseDir(brightness, Zumo32U4IRPulses::Right);
   }
 
 } proxSensors;
@@ -60,68 +69,64 @@ void setup()
 
 void loop()
 {
-  bool leftCloser = false;
-  bool rightCloser = false;
-
-  proxSensors.sense(brightnessLow);
-  if (proxSensors.frontLeft == proxSensors.frontRight)
+  if (detectedLastTimeLeft)
   {
-      if (proxSensors.frontLeft)
-      {
-        brightnessLow -= 2;
-      }
-      else
-      {
-        brightnessLow += 2;
-      }
+    brightnessLeft -= 2;
+    brightnessLeft = constrain(brightnessLeft, brightnessMin, brightnessMax);
+  }
+  detectedLastTimeLeft = proxSensors.senseLeft(brightnessLeft);
+  if (detectedLastTimeLeft)
+  {
+    okLeft = 4;
   }
   else
   {
-    leftCloser = proxSensors.frontLeft;
-    brightnessLow -= 2;
+    if (okLeft > 0) { okLeft--; }
+    brightnessLeft += 2;
+    brightnessLeft = constrain(brightnessLeft, brightnessMin, brightnessMax);
   }
-  brightnessLow = constrain(brightnessLow, brightnessMin, brightnessMax);
 
-  proxSensors.sense(brightnessHigh);
-  if (proxSensors.frontLeft == proxSensors.frontRight)
+  if (detectedLastTimeRight)
   {
-      if (proxSensors.frontLeft)
-      {
-        brightnessHigh -= 2;
-      }
-      else
-      {
-        brightnessHigh += 2;
-      }
+    brightnessRight -= 2;
+    brightnessRight = constrain(brightnessRight, brightnessMin, brightnessMax);
+  }
+  detectedLastTimeRight = proxSensors.senseRight(brightnessRight);
+  if (detectedLastTimeRight)
+  {
+    okRight = 4;
   }
   else
   {
-    rightCloser = proxSensors.frontRight;
-    brightnessHigh += 2;
+    if (okRight > 0) { okRight--; }
+    brightnessRight += 2;
+    brightnessRight = constrain(brightnessRight, brightnessMin, brightnessMax);
   }
-  brightnessHigh = constrain(brightnessHigh, brightnessMin, brightnessMax);
 
   lcd.gotoXY(0, 0);
-  lcd.print(brightnessLow);
+  lcd.print(brightnessLeft);
   lcd.print(F("  "));
+  lcd.gotoXY(5, 0);
+  lcd.print(okLeft);
   lcd.gotoXY(0, 1);
-  lcd.print(brightnessHigh);
+  lcd.print(brightnessRight);
   lcd.print(F("  "));
+  lcd.gotoXY(5, 1);
+  lcd.print(okLeft);
 
   if (motorsEnabled)
   {
-    if (brightnessHigh > brightnessLow && (leftCloser ^ rightCloser))
+    if (brightnessLeft < brightnessRight && okLeft)
     {
-      int32_t speed = (brightnessHigh - brightnessLow) * (int32_t)1600 / brightnessLow;
+      int32_t speed = (brightnessRight - brightnessLeft) * (int32_t)800 / brightnessLeft;
       speed = constrain(speed, 200, 400);
-      if (leftCloser)
-      {
-        motors.setSpeeds(-speed, speed);
-      }
-      else
-      {
-        motors.setSpeeds(speed, -speed);
-      }
+      motors.setSpeeds(-speed, speed);
+    }
+    else if (brightnessLeft > brightnessRight && okRight)
+    {
+      int32_t speed = (brightnessLeft - brightnessRight) * (int32_t)800 / brightnessRight;
+      speed = constrain(speed, 200, 400);
+      motors.setSpeeds(speed, -speed);
     }
     else
     {
