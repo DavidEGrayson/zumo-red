@@ -134,13 +134,13 @@ void loop()
       if (brightnessLeft < brightnessRight && okLeft)
       {
         int32_t speed = (brightnessRight - brightnessLeft) * (int32_t)800 / brightnessLeft;
-        speed = constrain(speed, 200, 200);
+        speed = constrain(speed, 100, 300);
         motors.setSpeeds(-speed, speed);
       }
       else if (brightnessLeft > brightnessRight && okRight)
       {
         int32_t speed = (brightnessLeft - brightnessRight) * (int32_t)800 / brightnessRight;
-        speed = constrain(speed, 200, 200);
+        speed = constrain(speed, 100, 300);
         motors.setSpeeds(speed, -speed);
       }
       else
