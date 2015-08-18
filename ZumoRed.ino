@@ -162,9 +162,10 @@ void changeStateToPausing();
 void changeStateToWaiting();
 void changeStateToTurningToCenter();
 void changeStateToDrivingToCenter();
+void changeStateToDriving();
+void changeStateToPushing();
 void changeStateToBacking();
 void changeStateToScanning();
-void changeStateToDriving();
 void changeStateToAnalyzingBorder();
 
 // In this state, we just wait for the user to press button
@@ -293,99 +294,6 @@ class StateDrivingToCenter : public RobotState
 } stateDrivingToCenter;
 void changeStateToDrivingToCenter() { changeState(stateDrivingToCenter); }
 
-// In this state, the robot drives in reverse.
-class StateBacking : public RobotState
-{
-  void setup()
-  {
-    encoders.getCountsAndResetLeft();
-    encoders.getCountsAndResetRight();
-    motors.setSpeeds(-reverseSpeed, -reverseSpeed);
-    lcd.print(F("back"));
-  }
-
-  void loop()
-  {
-    // After backing up for a specific distance, start scanning.
-    int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
-    if (-counts > (int16_t)reverseEncoderTicks * 2)
-    {
-      changeStateToScanning();
-    }
-  }
-} stateBacking;
-void changeStateToBacking() { changeState(stateBacking); }
-
-// In this state the robot rotates in place and tries to find
-// its opponent.
-class StateScanning : public RobotState
-{
-  uint16_t degreesTurned;
-  uint32_t angleBase;
-
-  void setup()
-  {
-    degreesTurned = 0;
-    angleBase = 0;
-    turnSensorReset();
-
-    senseReset();
-
-    if (scanDir == DirectionRight)
-    {
-      motors.setSpeeds(turnSpeedHigh, -turnSpeedLow);
-    }
-    else
-    {
-      motors.setSpeeds(-turnSpeedLow, turnSpeedHigh);
-    }
-
-    lcd.print(F("scan"));
-  }
-
-  void loop()
-  {
-    // Use the gyro to figure out how far we have turned while in this
-    // state.
-    turnSensorUpdate();
-    uint32_t angle1;
-    if (scanDir == DirectionRight)
-    {
-      angle1 = -turnAngle;
-    }
-    else
-    {
-      angle1 = turnAngle;
-    }
-    if ((int32_t)(angle1 - angleBase) > turnAngle45)
-    {
-      //buzzer.playFromProgramSpace(beep1);
-      angleBase += turnAngle45;
-      degreesTurned += 45;
-    }
-
-    sense();
-
-    uint16_t time = timeInThisState();
-
-    if (degreesTurned >= scanDegreesMax)
-    {
-      // We have not seen anything for a while, so start driving.
-      changeStateToDriving();
-    }
-    else if (time > scanTimeMin)
-    {
-      // If we detect anything with the front sensor, then start
-      // driving forwards.
-      if (objectSeen)
-      {
-        changeStateToDriving();
-      }
-    }
-  }
-} stateScanning;
-void changeStateToScanning() { changeState(stateScanning); }
-
 // In this state we drive forward while
 // - looking for the opponent using the proximity sensors
 // - veering towards the opponent if it is seen
@@ -467,6 +375,98 @@ class StateDriving : public RobotState
   }
 } stateDriving;
 void changeStateToDriving() { changeState(stateDriving); }
+
+// In this state, the robot drives in reverse.
+class StateBacking : public RobotState
+{
+  void setup()
+  {
+    encoders.getCountsAndResetLeft();
+    encoders.getCountsAndResetRight();
+    motors.setSpeeds(-reverseSpeed, -reverseSpeed);
+    lcd.print(F("back"));
+  }
+
+  void loop()
+  {
+    // After backing up for a specific distance, start scanning.
+    int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
+    if (-counts > (int16_t)reverseEncoderTicks * 2)
+    {
+      changeStateToScanning();
+    }
+  }
+} stateBacking;
+void changeStateToBacking() { changeState(stateBacking); }
+
+// In this state the robot rotates in place and tries to find
+// its opponent.
+class StateScanning : public RobotState
+{
+  uint16_t degreesTurned;
+  uint32_t angleBase;
+
+  void setup()
+  {
+    degreesTurned = 0;
+    angleBase = 0;
+    turnSensorReset();
+
+    senseReset();
+
+    if (scanDir == DirectionRight)
+    {
+      motors.setSpeeds(turnSpeedHigh, -turnSpeedLow);
+    }
+    else
+    {
+      motors.setSpeeds(-turnSpeedLow, turnSpeedHigh);
+    }
+
+    lcd.print(F("scan"));
+  }
+
+  void loop()
+  {
+    // Use the gyro to figure out how far we have turned while in this
+    // state.
+    turnSensorUpdate();
+    uint32_t angle1;
+    if (scanDir == DirectionRight)
+    {
+      angle1 = -turnAngle;
+    }
+    else
+    {
+      angle1 = turnAngle;
+    }
+    if ((int32_t)(angle1 - angleBase) > turnAngle45)
+    {
+      angleBase += turnAngle45;
+      degreesTurned += 45;
+    }
+
+    sense();
+
+    uint16_t time = timeInThisState();
+
+    if (degreesTurned >= scanDegreesMax)
+    {
+      // We have not seen anything for a while, so start driving.
+      changeStateToDriving();
+    }
+    else if (time > scanTimeMin)
+    {
+      // If we detect anything with the front sensor, then start
+      // driving forwards.
+      if (objectSeen)
+      {
+        changeStateToDriving();
+      }
+    }
+  }
+} stateScanning;
+void changeStateToScanning() { changeState(stateScanning); }
 
 class StateAnalyzingBorder : public RobotState
 {
