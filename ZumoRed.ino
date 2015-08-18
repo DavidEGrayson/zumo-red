@@ -115,8 +115,6 @@ bool justChangedState;
 // This gets set whenever we clear the display.
 bool displayCleared;
 
-bool buttonPress;
-
 // Gets the amount of time we have been in this state, in
 // milliseconds.  After 65535 milliseconds (65 seconds), this
 // overflows to 0.
@@ -143,7 +141,7 @@ void displayUpdated()
   displayCleared = false;
 }
 
-extern RobotState & robotState;
+extern RobotState * robotState;
 
 // Changes to a new state.  It also clears the LCD and turns off
 // the LEDs so that the things the previous state were doing do
@@ -157,7 +155,7 @@ void changeState(RobotState & state)
   ledGreen(0);
   lcd.clear();
   displayCleared = true;
-  robotState = state;
+  robotState = &state;
 }
 
 void changeStateToPausing();
@@ -190,8 +188,9 @@ public:
       lcd.print(F("     "));
     }
 
-    if (buttonPress)
+    if (buttonA.getSingleDebouncedPress())
     {
+      buzzer.playFromProgramSpace(beep1);
       // The user pressed button A, so go to the waiting state.
       changeStateToWaiting();
       //delay(500); changeState(StateDriving);  senseReset(); // TMPHAX
@@ -199,7 +198,7 @@ public:
   }
 } statePausing;
 void changeStateToPausing() { changeState(statePausing); }
-RobotState & robotState = statePausing;
+RobotState * robotState = &statePausing;
 
 class StateWaiting : public RobotState
 {
@@ -268,10 +267,10 @@ class StateDrivingToCenter : public RobotState
 {
   void setup()
   {
-    lcd.print(F("drivcent"));
     encoders.getCountsAndResetLeft();
     encoders.getCountsAndResetRight();
     motors.setSpeeds(driveCenterSpeed, driveCenterSpeed);
+    lcd.print(F("drivcent"));
   }
 
   void loop()
@@ -281,6 +280,12 @@ class StateDrivingToCenter : public RobotState
       justChangedState = false;
       encoders.getCountsAndResetLeft();
       encoders.getCountsAndResetRight();
+    }
+
+    int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
+    if (counts > (int16_t)edgeToCenterEncoderTicks * 2)
+    {
+      changeStateToScanning();
     }
 
     motors.setSpeeds(driveCenterSpeed, driveCenterSpeed);
@@ -293,10 +298,10 @@ class StateBacking : public RobotState
 {
   void setup()
   {
-    lcd.print(F("back"));
     encoders.getCountsAndResetLeft();
     encoders.getCountsAndResetRight();
     motors.setSpeeds(-reverseSpeed, -reverseSpeed);
+    lcd.print(F("back"));
   }
 
   void loop()
@@ -320,8 +325,6 @@ class StateScanning : public RobotState
 
   void setup()
   {
-    lcd.print(F("scan"));
-
     degreesTurned = 0;
     angleBase = 0;
     turnSensorReset();
@@ -336,6 +339,8 @@ class StateScanning : public RobotState
     {
       motors.setSpeeds(-turnSpeedLow, turnSpeedHigh);
     }
+
+    lcd.print(F("scan"));
   }
 
   void loop()
@@ -527,13 +532,11 @@ void setup()
 
 void loop()
 {
-  buttonPress = buttonA.getSingleDebouncedPress();
-
   if (justChangedState)
   {
     justChangedState = false;
-    robotState.setup();
+    robotState->setup();
   }
 
-  robotState.loop();
+  robotState->loop();
 }
