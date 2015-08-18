@@ -228,6 +228,7 @@ class StateWaiting : public RobotState
     {
       // We have waited long enough.  Start moving.
       changeStateToDrivingToCenter();
+      changeStateToPushing();  // tmphax to test pushing
     }
   }
 } stateWaiting;
@@ -375,6 +376,43 @@ class StateDriving : public RobotState
   }
 } stateDriving;
 void changeStateToDriving() { changeState(stateDriving); }
+
+class StatePushing : public RobotState
+{
+  void setup()
+  {
+    lcd.print(F("PUSH"));
+  }
+
+  void loop()
+  {
+    ledRed(1);
+
+    motors.setSpeeds(rammingSpeed, rammingSpeed);
+
+    // Check for the white border.
+    lineSensors.read(lineSensorValues);
+    if (lineSensorValues[0] < lineSensorThreshold)
+    {
+      turnCenterDir = DirectionRight;
+      changeStateToAnalyzingBorder();
+      changeStateToPausing();  // tmphax to test pushing
+      return;
+    }
+    if (lineSensorValues[2] < lineSensorThreshold)
+    {
+      turnCenterDir = DirectionLeft;
+      changeStateToAnalyzingBorder();
+      changeStateToPausing();  // tmphax to test pushing
+      return;
+    }
+
+    // Read the proximity sensors to sense the opponent.
+    sense();
+
+  }
+} statePushing;
+void changeStateToPushing() { changeState(statePushing); }
 
 // In this state, the robot drives in reverse.
 class StateBacking : public RobotState
