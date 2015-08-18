@@ -26,7 +26,7 @@ enum Direction
 const uint16_t lineSensorThreshold = 1000;
 
 // The speed that the robot uses when backing up.
-const uint16_t reverseSpeed = 300;
+const uint16_t reverseSpeed = 400;
 
 // The speed that the robot uses when turning.
 const uint16_t turnSpeedHigh = 400;
@@ -53,10 +53,6 @@ const uint16_t veerSpeedHigh = 250;
 // seconds without reaching a border).  400 is full speed.
 const uint16_t rammingSpeed = 400;
 
-// The amount of time to spend backing up after detecting a
-// border, in milliseconds.
-const uint16_t reverseTime = 400;
-
 // The minimum amount of time to spend scanning for nearby
 // opponents, in milliseconds.
 const uint16_t scanTimeMin = 200;
@@ -82,6 +78,10 @@ const uint16_t stalemateTime = 4000;
 // The number of encoder ticks to travel when we want to go from the
 // edge to the center.
 const uint16_t edgeToCenterEncoderTicks = 2180;
+
+// The number of encoder ticks to travel when backing away from the
+// edge.
+const uint16_t reverseEncoderTicks = 900;
 
 const uint16_t brightnessMin = 2;
 const uint16_t brightnessMax = 200;
@@ -383,14 +383,16 @@ void loop()
     if (justChangedState)
     {
       justChangedState = false;
+      encoders.getCountsAndResetLeft();
+      encoders.getCountsAndResetRight();
       lcd.print(F("back"));
     }
 
     motors.setSpeeds(-reverseSpeed, -reverseSpeed);
 
-    // After backing up for a specific amount of time, drive in
-    // reverse.
-    if (timeInThisState() >= reverseTime)
+    // After backing up for a specific distance, start scanning.
+    int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
+    if (-counts > (int16_t)reverseEncoderTicks * 2)
     {
       changeState(StateScanning);
     }
