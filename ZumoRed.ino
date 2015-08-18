@@ -7,9 +7,11 @@ enum State
 {
   StatePausing,
   StateWaiting,
-  StateCentering,
+  StateTurningToCenter,
+  StateDrivingToCenter,
   StateScanning,
   StateDriving,
+  StateBorderAnalyze,
   StateBacking,
 };
 
@@ -37,8 +39,14 @@ const uint16_t turnSpeedLow = 100;
 // might fail to stop when it detects the white border.
 const uint16_t forwardSpeed = 200;
 
+// The speed we drive when analyzing the white border.
+const uint16_t analyzeSpeed = 100;
+
 // The speed the robot goes when driving to the center initially.
 const uint16_t driveCenterSpeed = 400;
+
+// The speed used when turning towards the center.
+const uint16_t turnCenterSpeed = 200;
 
 // These two variables specify the speeds to apply to the motors
 // when veering left or veering right.  While the robot is
@@ -113,6 +121,9 @@ State state = StatePausing;
 // scanDir is the direction the robot should turn the next time
 // it scans for an opponent.
 Direction scanDir = DirectionLeft;
+
+Direction turnCenterDir;
+uint32_t turnCenterAngle;
 
 // The time, in milliseconds, that we entered the current top-level state.
 uint16_t stateStartTime;
@@ -320,6 +331,7 @@ void loop()
     {
       // The user pressed button A, so go to the waiting state.
       changeState(StateWaiting);
+      delay(500); changeState(StateDriving);  senseReset(); // TMPHAX
     }
   }
   else if (buttonPress)
@@ -348,10 +360,37 @@ void loop()
     else
     {
       // We have waited long enough.  Start moving.
-      changeState(StateCentering);
+      changeState(StateDrivingToCenter);
     }
   }
-  else if (state == StateCentering)
+  else if (state == StateTurningToCenter)
+  {
+    if (justChangedState)
+    {
+      justChangedState = false;
+      turnSensorReset();
+      lcd.print(F("turncent"));
+    }
+
+    if (turnCenterDir == DirectionLeft)
+    {
+      motors.setSpeeds(-turnCenterSpeed, turnCenterSpeed);
+    }
+    else
+    {
+      motors.setSpeeds(turnCenterSpeed, -turnCenterSpeed);
+    }
+
+    turnSensorUpdate();
+    
+    uint32_t angle = turnAngle;
+    if (turnCenterDir == DirectionRight) { angle = -angle; }
+    if (angle > turnCenterAngle && angle < turnAngle45 * 7)
+    {
+      changeState(StateDrivingToCenter);
+    }
+  }
+  else if (state == StateDrivingToCenter)
   {
     if (justChangedState)
     {
@@ -478,13 +517,13 @@ void loop()
     lineSensors.read(lineSensorValues);
     if (lineSensorValues[0] < lineSensorThreshold)
     {
-      scanDir = DirectionRight;
-      changeState(StateBacking);
+      turnCenterDir = DirectionRight;
+      changeState(StateBorderAnalyze);
     }
     if (lineSensorValues[2] < lineSensorThreshold)
     {
-      scanDir = DirectionLeft;
-      changeState(StateBacking);
+      turnCenterDir = DirectionLeft;
+      changeState(StateBorderAnalyze);
     }
 
     // Read the proximity sensors to see if know where the
@@ -504,16 +543,16 @@ void loop()
       // Turn on the red LED when ramming.
       ledRed(1);
     }
+    else if (objectSeen)
+    {
+    }
     else if (!objectSeen)
     {
-      // We don't see anything with the front sensor, so just
-      // keep driving forward.  Also monitor the side sensors; if
-      // they see an object then we want to go to the scanning
-      // state and turn torwards that object.
+      // We don't see anything with the front sensor.
 
       motors.setSpeeds(forwardSpeed, forwardSpeed);
 
-      /**
+      /** TODO: veer towards objects using the IR sensors!
       if (proxSensors.countsLeftWithLeftLeds() >= 2)
       {
         // Detected something to the left.
@@ -552,6 +591,53 @@ void loop()
         motors.setSpeeds(forwardSpeed, forwardSpeed);
       }
       ledRed(0);
+    }
+  }
+  else if (state == StateBorderAnalyze)
+  {
+    if (justChangedState)
+    {
+      justChangedState = false;
+      lcd.print(F("analyze"));
+      encoders.getCountsAndResetLeft();
+      encoders.getCountsAndResetRight();
+    }
+
+    motors.setSpeeds(analyzeSpeed, analyzeSpeed);
+
+    // Check the middle line sensor.
+    lineSensors.read(lineSensorValues);
+    if (lineSensorValues[1] < lineSensorThreshold)
+    {
+      /** tmphax to show encoder counts and angle
+      turnSensorReset();
+      int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
+      lcd.clear();
+      lcd.print(counts);
+      buzzer.playFromProgramSpace(beep1);
+      motors.setSpeeds(0, 0);
+      while(1)
+      {
+        turnSensorUpdate();
+        lcd.gotoXY(0, 1);
+        lcd.print((((int32_t)turnAngle >> 16) * 360) >> 16);
+        lcd.print(F("   "));
+      }
+      **/
+
+      int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
+      if (counts < 0) { counts = 0; }
+
+      turnCenterAngle = (turnAngle45 * 4) - 0x517CC1B7 * atan(counts/440);
+
+      // tmphax to show calculated angle
+      /**
+      motors.setSpeeds(0, 0);
+      lcd.clear();
+      lcd.print(((turnCenterAngle >> 16) * 360) >> 16);
+      delay(10000); **/
+
+      changeState(StateTurningToCenter);
     }
   }
 }
