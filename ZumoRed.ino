@@ -1,6 +1,7 @@
 #include <Wire.h>
 #include <Zumo32U4.h>
 #include "TurnSensor.h"
+#include "SmartProximitySensor.h"
 
 // This enum lists the top-level states that the robot can be in.
 enum State
@@ -91,9 +92,6 @@ const uint16_t edgeToCenterEncoderTicks = 2180;
 // edge.
 const uint16_t reverseEncoderTicks = 900;
 
-const uint16_t brightnessMin = 2;
-const uint16_t brightnessMax = 200;
-
 const char beep1[] PROGMEM = "!>c32";
 
 Zumo32U4Buzzer buzzer;
@@ -107,14 +105,6 @@ Zumo32U4ButtonC buttonC;
 L3G gyro;
 bool motorsEnabled = false;
 unsigned int lineSensorValues[3];
-
-uint16_t brightnessLeft = brightnessMax;
-uint16_t brightnessRight = brightnessMax;
-bool detectedLastTimeLeft = false;
-bool detectedLastTimeRight = false;
-uint8_t okLeft = 0;
-uint8_t okRight = 0;
-bool objectSeen = 0;
 
 State state = StatePausing;
 
@@ -139,127 +129,15 @@ bool justChangedState;
 // This gets set whenever we clear the display.
 bool displayCleared;
 
-class SmartProximitySensors
-{
-public:
-  const uint16_t pulseOnTimeUs = 421;
-  const uint16_t pulseOffTimeUs = 578;
-
-  bool frontLeft = 0;
-  bool frontRight = 0;
-
-  void init()
-  {
-    // Pull up the output of the front sensor.
-    FastGPIO::Pin<IO_F1>::setInputPulledUp();
-
-    // Turn off the line sensor emitter.
-    FastGPIO::Pin<11>::setOutputLow();
-    delayMicroseconds(pulseOffTimeUs);
-  }
-
-  bool senseDir(uint16_t brightness, Zumo32U4IRPulses::Direction dir)
-  {
-    Zumo32U4IRPulses::start(dir, brightness);
-    delayMicroseconds(pulseOnTimeUs);
-    bool result = !FastGPIO::Pin<IO_F1>::isInputHigh();
-    Zumo32U4IRPulses::stop();
-    delayMicroseconds(pulseOffTimeUs);
-    return result;
-  }
-
-  bool senseLeft(uint16_t brightness)
-  {
-    return senseDir(brightness, Zumo32U4IRPulses::Left);
-  }
-
-  bool senseRight(uint16_t brightness)
-  {
-    return senseDir(brightness, Zumo32U4IRPulses::Right);
-  }
-
-} proxSensors;
-
 void setup()
 {
-  senseReset();
+  senseInit();
   turnSensorSetup();
-  proxSensors.init();
   lineSensors.initThreeSensors();
   changeState(StatePausing);
 
   //senseTest();
 }
-
-void senseReset()
-{
-  brightnessLeft = brightnessMax;
-  brightnessRight = brightnessMax;
-  okLeft = 0;
-  okRight = 0;
-  objectSeen = 0;
-}
-
-void sense()
-{
-  if (detectedLastTimeLeft)
-  {
-    brightnessLeft -= 2;
-    brightnessLeft = constrain(brightnessLeft, brightnessMin, brightnessMax);
-  }
-  detectedLastTimeLeft = proxSensors.senseLeft(brightnessLeft);
-  if (detectedLastTimeLeft)
-  {
-    okLeft = 4;
-  }
-  else
-  {
-    if (okLeft > 0) { okLeft--; }
-    brightnessLeft += 2;
-    brightnessLeft = constrain(brightnessLeft, brightnessMin, brightnessMax);
-  }
-
-  if (detectedLastTimeRight)
-  {
-    brightnessRight -= 2;
-    brightnessRight = constrain(brightnessRight, brightnessMin, brightnessMax);
-  }
-  detectedLastTimeRight = proxSensors.senseRight(brightnessRight);
-  if (detectedLastTimeRight)
-  {
-    okRight = 4;
-  }
-  else
-  {
-    if (okRight > 0) { okRight--; }
-    brightnessRight += 2;
-    brightnessRight = constrain(brightnessRight, brightnessMin, brightnessMax);
-  }
-
-  objectSeen = (okLeft && brightnessLeft <= 190) || (okRight && brightnessRight <= 190);
-}
-
-void senseTest()
-{
-  lcd.clear();
-  while(1)
-  {
-    sense();
-    lcd.gotoXY(0, 0);
-    lcd.print(brightnessLeft);
-    lcd.print(F("  "));
-    lcd.gotoXY(5, 0);
-    lcd.print(okLeft);
-    lcd.gotoXY(0, 1);
-    lcd.print(brightnessRight);
-    lcd.print(F("  "));
-    lcd.gotoXY(5, 1);
-    lcd.print(okLeft);
-
-    ledYellow(objectSeen);
-  }
-}
-
 
 // Gets the amount of time we have been in this state, in
 // milliseconds.  After 65535 milliseconds (65 seconds), this
