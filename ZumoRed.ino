@@ -7,6 +7,7 @@ enum State
 {
   StatePausing,
   StateWaiting,
+  StateCentering,
   StateScanning,
   StateDriving,
   StateBacking,
@@ -28,12 +29,15 @@ const uint16_t lineSensorThreshold = 1000;
 const uint16_t reverseSpeed = 300;
 
 // The speed that the robot uses when turning.
-const uint16_t turnSpeed = 200;
+const uint16_t turnSpeed = 300;
 
 // The speed that the robot usually uses when moving forward.
 // You don't want this to be too fast because then the robot
 // might fail to stop when it detects the white border.
 const uint16_t forwardSpeed = 200;
+
+// The speed the robot goes when driving to the center initially.
+const uint16_t driveCenterSpeed = 400;
 
 // These two variables specify the speeds to apply to the motors
 // when veering left or veering right.  While the robot is
@@ -61,7 +65,7 @@ const uint16_t scanTimeMin = 200;
 // const uint16_t scanTimeMax = 2100;
 
 // The maximum number of degrees to turn while scanning for the opponent.
-const uint16_t scanDegreesMax = 450;
+const uint16_t scanDegreesMax = 360 * 2 + 90;
 
 // The amount of time to wait between detecting a button press
 // and actually starting to move, in milliseconds.  Typical robot
@@ -74,12 +78,17 @@ const uint16_t waitTime = 5000;
 // stalemate, so it increases its motor speed.
 const uint16_t stalemateTime = 4000;
 
+// The number of encoder ticks to travel when we want to go from the
+// edge to the center.
+const uint16_t edgeToCenterEncoderTicks = 2180;
+
 const uint16_t brightnessMin = 2;
 const uint16_t brightnessMax = 200;
 
 const char beep1[] PROGMEM = "!>c32";
 
 Zumo32U4Buzzer buzzer;
+Zumo32U4Encoders encoders;
 Zumo32U4Motors motors;
 Zumo32U4LCD lcd;
 Zumo32U4LineSensors lineSensors;
@@ -285,6 +294,7 @@ void loop()
       displayUpdated();
       lcd.gotoXY(0, 1);
       lcd.print(readBatteryMillivolts());
+      lcd.print(F("     "));
     }
 
     if (buttonPress)
@@ -319,7 +329,32 @@ void loop()
     else
     {
       // We have waited long enough.  Start moving.
+      changeState(StateCentering);
+    }
+  }
+  else if (state == StateCentering)
+  {
+    if (justChangedState)
+    {
+      justChangedState = false;
+      encoders.getCountsAndResetLeft();
+      encoders.getCountsAndResetRight();
+    }
+
+    motors.setSpeeds(driveCenterSpeed, driveCenterSpeed);
+
+    int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
+    if (counts > (int16_t)edgeToCenterEncoderTicks * 2)
+    {
       changeState(StateScanning);
+    }
+
+    if (displayIsStale(100))
+    {
+      displayUpdated();
+      lcd.gotoXY(0, 1);
+      lcd.print(counts);
+      lcd.print(F("     "));
     }
   }
   else if (state == StateBacking)
@@ -367,6 +402,8 @@ void loop()
       motors.setSpeeds(-turnSpeed, turnSpeed);
     }
 
+    // Use the gyro and some static variables to figure out how far we
+    // have turned while in this state.
     turnSensorUpdate();
     uint32_t angle1;
     if (scanDir == DirectionRight)
