@@ -52,8 +52,8 @@ bool objectSeen = 0;
 
 void senseInit()
 {
-    proxSensors.init();
-    senseReset();
+  proxSensors.init();
+  senseReset();
 }
 
 void senseReset()

@@ -2,11 +2,12 @@
 #include <Zumo32U4.h>
 #include "TurnSensor.h"
 #include "SmartProximitySensor.h"
+#include "RobotState.h"
 
 // This enum lists the top-level states that the robot can be in.
 enum State
 {
-  StatePausing,
+  StateObject,
   StateWaiting,
   StateTurningToCenter,
   StateDrivingToCenter,
@@ -106,7 +107,7 @@ L3G gyro;
 bool motorsEnabled = false;
 unsigned int lineSensorValues[3];
 
-State state = StatePausing;
+State state;
 
 // scanDir is the direction the robot should turn the next time
 // it scans for an opponent.
@@ -129,15 +130,7 @@ bool justChangedState;
 // This gets set whenever we clear the display.
 bool displayCleared;
 
-void setup()
-{
-  senseInit();
-  turnSensorSetup();
-  lineSensors.initThreeSensors();
-  changeState(StatePausing);
-
-  //senseTest();
-}
+bool buttonPress;
 
 // Gets the amount of time we have been in this state, in
 // milliseconds.  After 65535 milliseconds (65 seconds), this
@@ -145,21 +138,6 @@ void setup()
 uint16_t timeInThisState()
 {
   return (uint16_t)(millis() - stateStartTime);
-}
-
-// Changes to a new state.  It also clears the LCD and turns off
-// the LEDs so that the things the previous state were doing do
-// not affect the feedback the user sees in the new state.
-void changeState(uint8_t newState)
-{
-  state = (State)newState;
-  justChangedState = true;
-  stateStartTime = millis();
-  ledRed(0);
-  ledYellow(0);
-  ledGreen(0);
-  lcd.clear();
-  displayCleared = true;
 }
 
 // Returns true if the display has been cleared or the contents
@@ -180,23 +158,32 @@ void displayUpdated()
   displayCleared = false;
 }
 
-void loop()
+// Changes to a new state.  It also clears the LCD and turns off
+// the LEDs so that the things the previous state were doing do
+// not affect the feedback the user sees in the new state.
+void changeState(uint8_t newState)
 {
-  bool buttonPress = buttonA.getSingleDebouncedPress();
+  state = (State)newState;
+  justChangedState = true;
+  stateStartTime = millis();
+  ledRed(0);
+  ledYellow(0);
+  ledGreen(0);
+  lcd.clear();
+  displayCleared = true;
+}
 
-  if (state == StatePausing)
+class Pausing : public RobotState
+{
+public:
+  void setup()
   {
-    // In this state, we just wait for the user to press button
-    // A, while displaying the battery voltage every 100 ms.
-
     motors.setSpeeds(0, 0);
+    lcd.print(F("Press A"));
+  }
 
-    if (justChangedState)
-    {
-      justChangedState = false;
-      lcd.print(F("Press A"));
-    }
-
+  void loop()
+  {
     if (displayIsStale(100))
     {
       displayUpdated();
@@ -209,13 +196,52 @@ void loop()
     {
       // The user pressed button A, so go to the waiting state.
       changeState(StateWaiting);
-      delay(500); changeState(StateDriving);  senseReset(); // TMPHAX
+      //delay(500); changeState(StateDriving);  senseReset(); // TMPHAX
     }
+  }
+};
+
+Pausing statePausing;
+
+RobotState & robotState = statePausing;
+
+void changeState(RobotState & state)
+{
+  changeState(StateObject);
+  robotState = state;
+}
+
+void setup()
+{
+  senseInit();
+  turnSensorSetup();
+  lineSensors.initThreeSensors();
+  changeState(statePausing);
+
+  //senseTest();
+}
+
+void loop()
+{
+  buttonPress = buttonA.getSingleDebouncedPress();
+
+  if (state == StateObject)
+  {
+    // In this state, we just wait for the user to press button
+    // A, while displaying the battery voltage every 100 ms.
+
+    if (justChangedState)
+    {
+      justChangedState = false;
+      robotState.setup();
+    }
+
+    robotState.loop();
   }
   else if (buttonPress)
   {
     // The user pressed button A while the robot was running, so pause.
-    changeState(StatePausing);
+    changeState(statePausing);
   }
   else if (state == StateWaiting)
   {
@@ -260,7 +286,7 @@ void loop()
     }
 
     turnSensorUpdate();
-    
+
     uint32_t angle = turnAngle;
     if (turnCenterDir == DirectionRight) { angle = -angle; }
     if (angle > turnCenterAngle && angle < turnAngle45 * 7)
