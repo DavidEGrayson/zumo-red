@@ -65,7 +65,27 @@ void senseReset()
   objectSeen = 0;
 }
 
-void sense()
+static void senseRight()
+{
+  if (detectedLastTimeRight)
+  {
+    brightnessRight -= 2;
+    brightnessRight = constrain(brightnessRight, brightnessMin, brightnessMax);
+  }
+  detectedLastTimeRight = proxSensors.senseRight(brightnessRight);
+  if (detectedLastTimeRight)
+  {
+    okRight = 4;
+  }
+  else
+  {
+    if (okRight > 0) { okRight--; }
+    brightnessRight += 2;
+    brightnessRight = constrain(brightnessRight, brightnessMin, brightnessMax);
+  }
+}
+
+static void senseLeft()
 {
   if (detectedLastTimeLeft)
   {
@@ -83,23 +103,24 @@ void sense()
     brightnessLeft += 2;
     brightnessLeft = constrain(brightnessLeft, brightnessMin, brightnessMax);
   }
+}
 
-  if (detectedLastTimeRight)
+void sense()
+{
+  // If we try to sense both sides in this function, that produces
+  // asymmetric results that have big effects on the performance of
+  // our algorithms which are looking for any difference between the
+  // two brightnesses.
+  static bool senseToggle = 0;
+  if (senseToggle)
   {
-    brightnessRight -= 2;
-    brightnessRight = constrain(brightnessRight, brightnessMin, brightnessMax);
-  }
-  detectedLastTimeRight = proxSensors.senseRight(brightnessRight);
-  if (detectedLastTimeRight)
-  {
-    okRight = 4;
+    senseRight();
   }
   else
   {
-    if (okRight > 0) { okRight--; }
-    brightnessRight += 2;
-    brightnessRight = constrain(brightnessRight, brightnessMin, brightnessMax);
+    senseLeft();
   }
+  senseToggle ^= 1;
 
   objectSeen = (okLeft && brightnessLeft <= 190) || (okRight && brightnessRight <= 190);
 }
