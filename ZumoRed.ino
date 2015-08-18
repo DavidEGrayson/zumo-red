@@ -4,19 +4,6 @@
 #include "SmartProximitySensor.h"
 #include "RobotState.h"
 
-// This enum lists the top-level states that the robot can be in.
-enum State
-{
-  StateObject,
-  StateWaiting,
-  StateTurningToCenter,
-  StateDrivingToCenter,
-  StateScanning,
-  StateDriving,
-  StateBorderAnalyze,
-  StateBacking,
-};
-
 enum Direction
 {
   DirectionLeft,
@@ -107,8 +94,6 @@ L3G gyro;
 bool motorsEnabled = false;
 unsigned int lineSensorValues[3];
 
-State state;
-
 // scanDir is the direction the robot should turn the next time
 // it scans for an opponent.
 Direction scanDir = DirectionLeft;
@@ -158,12 +143,13 @@ void displayUpdated()
   displayCleared = false;
 }
 
+extern RobotState & robotState;
+
 // Changes to a new state.  It also clears the LCD and turns off
 // the LEDs so that the things the previous state were doing do
 // not affect the feedback the user sees in the new state.
-void changeState(uint8_t newState)
+void changeState(RobotState & state)
 {
-  state = (State)newState;
   justChangedState = true;
   stateStartTime = millis();
   ledRed(0);
@@ -171,9 +157,21 @@ void changeState(uint8_t newState)
   ledGreen(0);
   lcd.clear();
   displayCleared = true;
+  robotState = state;
 }
 
-class Pausing : public RobotState
+void changeStateToPausing();
+void changeStateToWaiting();
+void changeStateToTurningToCenter();
+void changeStateToDrivingToCenter();
+void changeStateToBacking();
+void changeStateToScanning();
+void changeStateToDriving();
+void changeStateToAnalyzingBorder();
+
+// In this state, we just wait for the user to press button
+// A, while displaying the battery voltage every 100 ms.
+class StatePausing : public RobotState
 {
 public:
   void setup()
@@ -195,60 +193,25 @@ public:
     if (buttonPress)
     {
       // The user pressed button A, so go to the waiting state.
-      changeState(StateWaiting);
+      changeStateToWaiting();
       //delay(500); changeState(StateDriving);  senseReset(); // TMPHAX
     }
   }
-};
-
-Pausing statePausing;
-
+} statePausing;
+void changeStateToPausing() { changeState(statePausing); }
 RobotState & robotState = statePausing;
 
-void changeState(RobotState & state)
+class StateWaiting : public RobotState
 {
-  changeState(StateObject);
-  robotState = state;
-}
-
-void setup()
-{
-  senseInit();
-  turnSensorSetup();
-  lineSensors.initThreeSensors();
-  changeState(statePausing);
-
-  //senseTest();
-}
-
-void loop()
-{
-  buttonPress = buttonA.getSingleDebouncedPress();
-
-  if (state == StateObject)
+  void setup()
   {
-    // In this state, we just wait for the user to press button
-    // A, while displaying the battery voltage every 100 ms.
-
-    if (justChangedState)
-    {
-      justChangedState = false;
-      robotState.setup();
-    }
-
-    robotState.loop();
+    motors.setSpeeds(0, 0);
   }
-  else if (buttonPress)
-  {
-    // The user pressed button A while the robot was running, so pause.
-    changeState(statePausing);
-  }
-  else if (state == StateWaiting)
+
+  void loop()
   {
     // In this state, we wait for a while and then move on to the
     // scanning state.
-
-    motors.setSpeeds(0, 0);
 
     uint16_t time = timeInThisState();
 
@@ -264,18 +227,22 @@ void loop()
     else
     {
       // We have waited long enough.  Start moving.
-      changeState(StateDrivingToCenter);
+      changeStateToDrivingToCenter();
     }
   }
-  else if (state == StateTurningToCenter)
-  {
-    if (justChangedState)
-    {
-      justChangedState = false;
-      turnSensorReset();
-      lcd.print(F("turncent"));
-    }
+} stateWaiting;
+void changeStateToWaiting() { changeState(stateWaiting); }
 
+class StateTurningToCenter : public RobotState
+{
+  void setup()
+  {
+    turnSensorReset();
+    lcd.print(F("turncent"));
+  }
+
+  void loop()
+  {
     if (turnCenterDir == DirectionLeft)
     {
       motors.setSpeeds(-turnCenterSpeed, turnCenterSpeed);
@@ -291,10 +258,23 @@ void loop()
     if (turnCenterDir == DirectionRight) { angle = -angle; }
     if (angle > turnCenterAngle && angle < turnAngle45 * 7)
     {
-      changeState(StateDrivingToCenter);
+      changeStateToDrivingToCenter();
     }
   }
-  else if (state == StateDrivingToCenter)
+} stateTurningToCenter;
+void changeStateToTurningToCenter() { changeState(stateTurningToCenter); }
+
+class StateDrivingToCenter : public RobotState
+{
+  void setup()
+  {
+    lcd.print(F("drivcent"));
+    encoders.getCountsAndResetLeft();
+    encoders.getCountsAndResetRight();
+    motors.setSpeeds(driveCenterSpeed, driveCenterSpeed);
+  }
+
+  void loop()
   {
     if (justChangedState)
     {
@@ -304,59 +284,49 @@ void loop()
     }
 
     motors.setSpeeds(driveCenterSpeed, driveCenterSpeed);
-
-    int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
-    if (counts > (int16_t)edgeToCenterEncoderTicks * 2)
-    {
-      changeState(StateScanning);
-    }
-
-    if (displayIsStale(100))
-    {
-      displayUpdated();
-      lcd.gotoXY(0, 1);
-      lcd.print(counts);
-      lcd.print(F("     "));
-    }
   }
-  else if (state == StateBacking)
+} stateDrivingToCenter;
+void changeStateToDrivingToCenter() { changeState(stateDrivingToCenter); }
+
+// In this state, the robot drives in reverse.
+class StateBacking : public RobotState
+{
+  void setup()
   {
-    // In this state, the robot drives in reverse.
-
-    if (justChangedState)
-    {
-      justChangedState = false;
-      encoders.getCountsAndResetLeft();
-      encoders.getCountsAndResetRight();
-      lcd.print(F("back"));
-    }
-
+    lcd.print(F("back"));
+    encoders.getCountsAndResetLeft();
+    encoders.getCountsAndResetRight();
     motors.setSpeeds(-reverseSpeed, -reverseSpeed);
+  }
 
+  void loop()
+  {
     // After backing up for a specific distance, start scanning.
     int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
     if (-counts > (int16_t)reverseEncoderTicks * 2)
     {
-      changeState(StateScanning);
+      changeStateToScanning();
     }
   }
-  else if (state == StateScanning)
+} stateBacking;
+void changeStateToBacking() { changeState(stateBacking); }
+
+// In this state the robot rotates in place and tries to find
+// its opponent.
+class StateScanning : public RobotState
+{
+  uint16_t degreesTurned;
+  uint32_t angleBase;
+
+  void setup()
   {
-    // In this state the robot rotates in place and tries to find
-    // its opponent.
+    lcd.print(F("scan"));
 
-    static uint16_t degreesTurned;
-    static uint32_t angleBase;
+    degreesTurned = 0;
+    angleBase = 0;
+    turnSensorReset();
 
-    if (justChangedState)
-    {
-      justChangedState = false;
-      senseReset();
-      turnSensorReset();
-      degreesTurned = 0;
-      angleBase = 0;
-      lcd.print(F("scan"));
-    }
+    senseReset();
 
     if (scanDir == DirectionRight)
     {
@@ -366,9 +336,12 @@ void loop()
     {
       motors.setSpeeds(-turnSpeedLow, turnSpeedHigh);
     }
+  }
 
-    // Use the gyro and some static variables to figure out how far we
-    // have turned while in this state.
+  void loop()
+  {
+    // Use the gyro to figure out how far we have turned while in this
+    // state.
     turnSensorUpdate();
     uint32_t angle1;
     if (scanDir == DirectionRight)
@@ -393,7 +366,7 @@ void loop()
     if (degreesTurned >= scanDegreesMax)
     {
       // We have not seen anything for a while, so start driving.
-      changeState(StateDriving);
+      changeStateToDriving();
     }
     else if (time > scanTimeMin)
     {
@@ -401,37 +374,46 @@ void loop()
       // driving forwards.
       if (objectSeen)
       {
-        changeState(StateDriving);
+        changeStateToDriving();
       }
     }
   }
-  else if (state == StateDriving)
+} stateScanning;
+void changeStateToScanning() { changeState(stateScanning); }
+
+// In this state we drive forward while
+// - looking for the opponent using the proximity sensors
+// - veering towards the opponent if it is seen
+// - checking for the white border
+//
+// TODO: combine this with StateDrivingToCenter
+class StateDriving : public RobotState
+{
+  void setup()
   {
-    // In this state we drive forward while also looking for the
-    // opponent using the proximity sensors and checking for the
-    // white border.
+    lcd.print(F("drive"));
 
-    if (justChangedState)
-    {
-      justChangedState = false;
-      lcd.print(F("drive"));
-    }
+    // senseReset(); // not needed because we were scanning earlier
+  }
 
-    // Check for borders.
+  void loop()
+  {
+    // Check for the white border.
     lineSensors.read(lineSensorValues);
     if (lineSensorValues[0] < lineSensorThreshold)
     {
       turnCenterDir = DirectionRight;
-      changeState(StateBorderAnalyze);
+      changeStateToAnalyzingBorder();
+      return;
     }
     if (lineSensorValues[2] < lineSensorThreshold)
     {
       turnCenterDir = DirectionLeft;
-      changeState(StateBorderAnalyze);
+      changeStateToAnalyzingBorder();
+      return;
     }
 
-    // Read the proximity sensors to see if know where the
-    // opponent is.
+    // Read the proximity sensors to sense the opponent.
     sense();
 
     if ((objectSeen && brightnessLeft < 40 && brightnessRight < 40)
@@ -447,30 +429,11 @@ void loop()
       // Turn on the red LED when ramming.
       ledRed(1);
     }
-    else if (objectSeen)
-    {
-    }
     else if (!objectSeen)
     {
       // We don't see anything with the front sensor.
 
       motors.setSpeeds(forwardSpeed, forwardSpeed);
-
-      /** TODO: veer towards objects using the IR sensors!
-      if (proxSensors.countsLeftWithLeftLeds() >= 2)
-      {
-        // Detected something to the left.
-        scanDir = DirectionLeft;
-        changeState(StateScanning);
-      }
-
-      if (proxSensors.countsRightWithRightLeds() >= 2)
-      {
-        // Detected something to the right.
-        scanDir = DirectionRight;
-        changeState(StateScanning);
-      }
-      **/
 
       ledRed(0);
     }
@@ -497,16 +460,21 @@ void loop()
       ledRed(0);
     }
   }
-  else if (state == StateBorderAnalyze)
-  {
-    if (justChangedState)
-    {
-      justChangedState = false;
-      lcd.print(F("analyze"));
-      encoders.getCountsAndResetLeft();
-      encoders.getCountsAndResetRight();
-    }
+} stateDriving;
+void changeStateToDriving() { changeState(stateDriving); }
 
+class StateAnalyzingBorder : public RobotState
+{
+  void setup()
+  {
+    encoders.getCountsAndResetLeft();
+    encoders.getCountsAndResetRight();
+    motors.setSpeeds(analyzeSpeed, analyzeSpeed);
+    lcd.print(F("analyze"));
+  }
+
+  void loop()
+  {
     motors.setSpeeds(analyzeSpeed, analyzeSpeed);
 
     // Check the middle line sensor.
@@ -541,7 +509,31 @@ void loop()
       lcd.print(((turnCenterAngle >> 16) * 360) >> 16);
       delay(10000); **/
 
-      changeState(StateTurningToCenter);
+      changeStateToTurningToCenter();
     }
   }
+} stateAnalyzingBorder;
+void changeStateToAnalyzingBorder() { changeState(stateAnalyzingBorder); }
+
+void setup()
+{
+  senseInit();
+  turnSensorSetup();
+  lineSensors.initThreeSensors();
+  changeStateToPausing();
+
+  //senseTest();
+}
+
+void loop()
+{
+  buttonPress = buttonA.getSingleDebouncedPress();
+
+  if (justChangedState)
+  {
+    justChangedState = false;
+    robotState.setup();
+  }
+
+  robotState.loop();
 }
