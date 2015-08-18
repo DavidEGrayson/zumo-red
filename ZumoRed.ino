@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <Zumo32U4.h>
+#include "TurnSensor.h"
 
 // This enum lists the top-level states that the robot can be in.
 enum State
@@ -24,7 +25,7 @@ enum Direction
 const uint16_t lineSensorThreshold = 1000;
 
 // The speed that the robot uses when backing up.
-const uint16_t reverseSpeed = 200;
+const uint16_t reverseSpeed = 300;
 
 // The speed that the robot uses when turning.
 const uint16_t turnSpeed = 200;
@@ -49,7 +50,7 @@ const uint16_t rammingSpeed = 400;
 
 // The amount of time to spend backing up after detecting a
 // border, in milliseconds.
-const uint16_t reverseTime = 200;
+const uint16_t reverseTime = 400;
 
 // The minimum amount of time to spend scanning for nearby
 // opponents, in milliseconds.
@@ -57,7 +58,10 @@ const uint16_t scanTimeMin = 200;
 
 // The maximum amount of time to spend scanning for nearby
 // opponents, in milliseconds.
-const uint16_t scanTimeMax = 2100;
+// const uint16_t scanTimeMax = 2100;
+
+// The maximum number of degrees to turn while scanning for the opponent.
+const uint16_t scanDegreesMax = 450;
 
 // The amount of time to wait between detecting a button press
 // and actually starting to move, in milliseconds.  Typical robot
@@ -82,6 +86,7 @@ Zumo32U4LineSensors lineSensors;
 Zumo32U4ButtonA buttonA;
 Zumo32U4ButtonB buttonB;
 Zumo32U4ButtonC buttonC;
+L3G gyro;
 bool motorsEnabled = false;
 unsigned int lineSensorValues[3];
 
@@ -156,6 +161,7 @@ public:
 
 void setup()
 {
+  turnSensorSetup();
   proxSensors.init();
   lineSensors.initThreeSensors();
   changeState(StatePausing);
@@ -340,9 +346,15 @@ void loop()
     // In this state the robot rotates in place and tries to find
     // its opponent.
 
+    static uint16_t degreesTurned;
+    static uint32_t angleBase;
+
     if (justChangedState)
     {
       justChangedState = false;
+      turnSensorReset();
+      degreesTurned = 0;
+      angleBase = 0;
       lcd.print(F("scan"));
     }
 
@@ -355,18 +367,35 @@ void loop()
       motors.setSpeeds(-turnSpeed, turnSpeed);
     }
 
+    turnSensorUpdate();
+    uint32_t angle1;
+    if (scanDir == DirectionRight)
+    {
+      angle1 = -turnAngle;
+    }
+    else
+    {
+      angle1 = turnAngle;
+    }
+    if ((int32_t)(angle1 - angleBase) > turnAngle45)
+    {
+      angleBase += turnAngle45;
+      degreesTurned += 45;
+    }
+
+    sense();
+
     uint16_t time = timeInThisState();
 
-    if (time > scanTimeMax)
+    if (degreesTurned >= scanDegreesMax)
     {
       // We have not seen anything for a while, so start driving.
       changeState(StateDriving);
     }
     else if (time > scanTimeMin)
     {
-      // Read the proximity sensors.  If we detect anything with
-      // the front sensor, then start driving forwards.
-      sense();
+      // If we detect anything with the front sensor, then start
+      // driving forwards.
       if (objectSeen)
       {
         changeState(StateDriving);
