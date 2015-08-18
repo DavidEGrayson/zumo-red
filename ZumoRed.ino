@@ -99,8 +99,8 @@ L3G gyro;
 bool motorsEnabled = false;
 unsigned int lineSensorValues[3];
 
-uint16_t brightnessLeft = 50;
-uint16_t brightnessRight = 50;
+uint16_t brightnessLeft = brightnessMax;
+uint16_t brightnessRight = brightnessMax;
 bool detectedLastTimeLeft = false;
 bool detectedLastTimeRight = false;
 uint8_t okLeft = 0;
@@ -170,10 +170,22 @@ public:
 
 void setup()
 {
+  senseReset();
   turnSensorSetup();
   proxSensors.init();
   lineSensors.initThreeSensors();
   changeState(StatePausing);
+
+  //senseTest();
+}
+
+void senseReset()
+{
+  brightnessLeft = brightnessMax;
+  brightnessRight = brightnessMax;
+  okLeft = 0;
+  okRight = 0;
+  objectSeen = 0;
 }
 
 void sense()
@@ -215,20 +227,26 @@ void sense()
   objectSeen = (okLeft && brightnessLeft <= 190) || (okRight && brightnessRight <= 190);
 }
 
-/**
-  lcd.gotoXY(0, 0);
-  lcd.print(brightnessLeft);
-  lcd.print(F("  "));
-  lcd.gotoXY(5, 0);
-  lcd.print(okLeft);
-  lcd.gotoXY(0, 1);
-  lcd.print(brightnessRight);
-  lcd.print(F("  "));
-  lcd.gotoXY(5, 1);
-  lcd.print(okLeft);
+void senseTest()
+{
+  lcd.clear();
+  while(1)
+  {
+    sense();
+    lcd.gotoXY(0, 0);
+    lcd.print(brightnessLeft);
+    lcd.print(F("  "));
+    lcd.gotoXY(5, 0);
+    lcd.print(okLeft);
+    lcd.gotoXY(0, 1);
+    lcd.print(brightnessRight);
+    lcd.print(F("  "));
+    lcd.gotoXY(5, 1);
+    lcd.print(okLeft);
 
-  ledYellow(objectSeen);
-**/
+    ledYellow(objectSeen);
+  }
+}
 
 
 // Gets the amount of time we have been in this state, in
@@ -387,6 +405,7 @@ void loop()
     if (justChangedState)
     {
       justChangedState = false;
+      senseReset();
       turnSensorReset();
       degreesTurned = 0;
       angleBase = 0;
