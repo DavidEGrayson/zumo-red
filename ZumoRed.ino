@@ -44,11 +44,12 @@ const uint16_t turnCenterSpeed = 200;
 const uint16_t veerSpeedLow = 0;
 const uint16_t veerSpeedHigh = 250;
 
-// The speed that the robot drives when it detects an opponent in
-// front of it, either with the proximity sensors or by noticing
-// that it is caught in a stalemate (driving forward for several
-// seconds without reaching a border).  400 is full speed.
+// The speed that the robot drives when it thinks it is pushing or
+// about to push an opponent.
 const uint16_t rammingSpeed = 400;
+
+// The speed used on the non-dominant wheel to turn during ramming.
+const uint16_t rammingSpeedLow = 200;
 
 // The minimum amount of time to spend scanning for nearby
 // opponents, in milliseconds.
@@ -70,7 +71,7 @@ const uint16_t waitTime = 5000;
 // in milliseconds, without reaching a border, the robot decides
 // that it must be pushing on another robot and this is a
 // stalemate, so it increases its motor speed.
-const uint16_t stalemateTime = 4000;
+const uint16_t stalemateTime = 1500;
 
 // The number of encoder ticks to travel when we want to go from the
 // edge to the center.
@@ -228,7 +229,7 @@ class StateWaiting : public RobotState
     {
       // We have waited long enough.  Start moving.
       changeStateToDrivingToCenter();
-      changeStateToPushing();  // tmphax to test pushing
+      senseReset(); changeStateToPushing();  // tmphax to test pushing
     }
   }
 } stateWaiting;
@@ -388,7 +389,30 @@ class StatePushing : public RobotState
   {
     ledRed(1);
 
-    motors.setSpeeds(rammingSpeed, rammingSpeed);
+    // Read the proximity sensors to sense the opponent.
+    sense();
+
+    ledYellow(objectSeen);
+
+    // Within the first second, we try to steer towards the enemy.
+    // After that, we are probably locked in a stalemate and we should
+    // ensure our motors are running at full power.
+    if (objectSeen && timeInThisState() < stalemateTime)
+    {
+      if (brightnessLeft > brightnessRight)
+      {
+        // Swerve to the right.
+        motors.setSpeeds(rammingSpeed, rammingSpeedLow);
+      }
+      else
+      {
+        motors.setSpeeds(rammingSpeedLow, rammingSpeed);
+      }
+    }
+    else
+    {
+      motors.setSpeeds(rammingSpeed, rammingSpeed);
+    }
 
     // Check for the white border.
     lineSensors.read(lineSensorValues);
@@ -406,10 +430,6 @@ class StatePushing : public RobotState
       changeStateToPausing();  // tmphax to test pushing
       return;
     }
-
-    // Read the proximity sensors to sense the opponent.
-    sense();
-
   }
 } statePushing;
 void changeStateToPushing() { changeState(statePushing); }
