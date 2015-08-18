@@ -29,7 +29,8 @@ const uint16_t lineSensorThreshold = 1000;
 const uint16_t reverseSpeed = 300;
 
 // The speed that the robot uses when turning.
-const uint16_t turnSpeed = 300;
+const uint16_t turnSpeedHigh = 400;
+const uint16_t turnSpeedLow = 100;
 
 // The speed that the robot usually uses when moving forward.
 // You don't want this to be too fast because then the robot
@@ -414,11 +415,11 @@ void loop()
 
     if (scanDir == DirectionRight)
     {
-      motors.setSpeeds(turnSpeed, -turnSpeed);
+      motors.setSpeeds(turnSpeedHigh, -turnSpeedLow);
     }
     else
     {
-      motors.setSpeeds(-turnSpeed, turnSpeed);
+      motors.setSpeeds(-turnSpeedLow, turnSpeedHigh);
     }
 
     // Use the gyro and some static variables to figure out how far we
