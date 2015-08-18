@@ -24,15 +24,10 @@ const uint16_t turnSpeedHigh = 400;
 const uint16_t turnSpeedLow = 100;
 
 // The speed that the robot usually uses when moving forward.
-// You don't want this to be too fast because then the robot
-// might fail to stop when it detects the white border.
-const uint16_t forwardSpeed = 200;
+const uint16_t forwardSpeed = 400;
 
 // The speed we drive when analyzing the white border.
 const uint16_t analyzeSpeed = 100;
-
-// The speed the robot goes when driving to the center initially.
-const uint16_t driveCenterSpeed = 400;
 
 // The speed used when turning towards the center.
 const uint16_t turnCenterSpeed = 200;
@@ -162,7 +157,6 @@ void changeState(RobotState & state)
 void changeStateToPausing();
 void changeStateToWaiting();
 void changeStateToTurningToCenter();
-void changeStateToDrivingToCenter();
 void changeStateToDriving();
 void changeStateToPushing();
 void changeStateToBacking();
@@ -195,7 +189,6 @@ public:
       buzzer.playFromProgramSpace(beep1);
       // The user pressed button A, so go to the waiting state.
       changeStateToWaiting();
-      //delay(500); changeState(StateDriving);  senseReset(); // TMPHAX
     }
   }
 } statePausing;
@@ -228,8 +221,7 @@ class StateWaiting : public RobotState
     else
     {
       // We have waited long enough.  Start moving.
-      changeStateToDrivingToCenter();
-      senseReset(); changeStateToPushing();  // tmphax to test pushing
+      changeStateToDriving();
     }
   }
 } stateWaiting;
@@ -260,59 +252,39 @@ class StateTurningToCenter : public RobotState
     if (turnCenterDir == DirectionRight) { angle = -angle; }
     if (angle > turnCenterAngle && angle < turnAngle45 * 7)
     {
-      changeStateToDrivingToCenter();
+      changeStateToDriving();
     }
   }
 } stateTurningToCenter;
 void changeStateToTurningToCenter() { changeState(stateTurningToCenter); }
 
-class StateDrivingToCenter : public RobotState
+// In this state we drive forward while
+// - looking for the opponent using the proximity sensors
+// - veering towards the opponent if it is seen
+// - checking for the white border
+// - stopping if we have driven enough to get into the center
+class StateDriving : public RobotState
 {
   void setup()
   {
     encoders.getCountsAndResetLeft();
     encoders.getCountsAndResetRight();
-    motors.setSpeeds(driveCenterSpeed, driveCenterSpeed);
-    lcd.print(F("drivcent"));
+    motors.setSpeeds(forwardSpeed, forwardSpeed);
+    // senseReset(); // not needed because we were scanning earlier
+    lcd.print(F("drive"));
   }
 
   void loop()
   {
-    if (justChangedState)
-    {
-      justChangedState = false;
-      encoders.getCountsAndResetLeft();
-      encoders.getCountsAndResetRight();
-    }
-
+    // If we have driven far enough to get into the center, then start
+    // scanning.  You can point the robot at the center if you want it to go there,
+    // or you can point it at a nearby part of the border.
     int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
     if (counts > (int16_t)edgeToCenterEncoderTicks * 2)
     {
       changeStateToScanning();
     }
 
-    motors.setSpeeds(driveCenterSpeed, driveCenterSpeed);
-  }
-} stateDrivingToCenter;
-void changeStateToDrivingToCenter() { changeState(stateDrivingToCenter); }
-
-// In this state we drive forward while
-// - looking for the opponent using the proximity sensors
-// - veering towards the opponent if it is seen
-// - checking for the white border
-//
-// TODO: combine this with StateDrivingToCenter
-class StateDriving : public RobotState
-{
-  void setup()
-  {
-    lcd.print(F("drive"));
-
-    // senseReset(); // not needed because we were scanning earlier
-  }
-
-  void loop()
-  {
     // Check for the white border.
     lineSensors.read(lineSensorValues);
     if (lineSensorValues[0] < lineSensorThreshold)
@@ -330,49 +302,9 @@ class StateDriving : public RobotState
 
     // Read the proximity sensors to sense the opponent.
     sense();
-
-    if ((objectSeen && brightnessLeft < 40 && brightnessRight < 40)
-      || timeInThisState() > stalemateTime)
+    if (objectSeen)
     {
-      // The front sensor is getting a strong signal, or we have
-      // been driving forward for a while now without seeing the
-      // border.  Either way, there is probably a robot in front
-      // of us and we should switch to ramming speed to try to
-      // push the robot out of the ring.
-      motors.setSpeeds(rammingSpeed, rammingSpeed);
-
-      // Turn on the red LED when ramming.
-      ledRed(1);
-    }
-    else if (!objectSeen)
-    {
-      // We don't see anything with the front sensor.
-
-      motors.setSpeeds(forwardSpeed, forwardSpeed);
-
-      ledRed(0);
-    }
-    else
-    {
-      // We see something with the front sensor but it is not a
-      // strong reading.
-
-      if (brightnessLeft > brightnessRight && okRight)
-      {
-        // The right-side reading is stronger, so veer to the right.
-        motors.setSpeeds(veerSpeedHigh, veerSpeedLow);
-      }
-      else if (brightnessLeft < brightnessRight && okLeft)
-      {
-        // The left-side reading is stronger, so veer to the left.
-        motors.setSpeeds(veerSpeedLow, veerSpeedHigh);
-      }
-      else
-      {
-        // Just drive forward.
-        motors.setSpeeds(forwardSpeed, forwardSpeed);
-      }
-      ledRed(0);
+      changeStateToPushing();
     }
   }
 } stateDriving;
@@ -420,14 +352,12 @@ class StatePushing : public RobotState
     {
       turnCenterDir = DirectionRight;
       changeStateToAnalyzingBorder();
-      changeStateToPausing();  // tmphax to test pushing
       return;
     }
     if (lineSensorValues[2] < lineSensorThreshold)
     {
       turnCenterDir = DirectionLeft;
       changeStateToAnalyzingBorder();
-      changeStateToPausing();  // tmphax to test pushing
       return;
     }
   }
@@ -544,7 +474,7 @@ class StateAnalyzingBorder : public RobotState
     lineSensors.read(lineSensorValues);
     if (lineSensorValues[1] < lineSensorThreshold)
     {
-      /** tmphax to show encoder counts and angle
+      /** Uncomment to show encoder counts and angle
       turnSensorReset();
       int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
       lcd.clear();
@@ -565,7 +495,7 @@ class StateAnalyzingBorder : public RobotState
 
       turnCenterAngle = (turnAngle45 * 4) - 0x517CC1B7 * atan(counts/440);
 
-      // tmphax to show calculated angle
+      // Uncomment to show calculated angle
       /**
       motors.setSpeeds(0, 0);
       lcd.clear();
