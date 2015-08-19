@@ -110,6 +110,8 @@ bool justChangedState;
 // This gets set whenever we clear the display.
 bool displayCleared;
 
+bool lastStopAtEdge;
+
 // Gets the amount of time we have been in this state, in
 // milliseconds.  After 65535 milliseconds (65 seconds), this
 // overflows to 0.
@@ -138,8 +140,12 @@ void displayUpdated()
 
 uint32_t calculateTurnCenterAngle(uint16_t counts)
 {
-  return ((uint32_t)turnAngle45 * 4) -
-    (uint32_t)(0x28BE60DB * atan((double)counts / sensorDistance));
+  // This fudge factor helps us account for the fact that we have
+  // simple algorithms that make us overshoot the threshold.
+  float fudge = 0.9;
+
+  return ((uint32_t)turnAngle45 * 4 * fudge) -
+    (uint32_t)((0x28BE60DB * fudge) * atan((double)counts / sensorDistance));
 }
 
 extern RobotState * robotState;
@@ -175,6 +181,7 @@ class StatePausing : public RobotState
 public:
   void setup()
   {
+    lastStopAtEdge = true;
     motors.setSpeeds(0, 0);
     lcd.print(F("Press A"));
   }
@@ -292,9 +299,12 @@ class StateDriving : public RobotState
   {
     // If we have driven far enough to get into the center, then start
     // scanning.  You can point the robot at the center if you want it to go there,
-    // or you can point it at a nearby part of the border.
+    // or you can point it at a nearby part of the border.  This behavior is
+    // dangerous because we might be really close to the edge, so we only do it
+    // if our last stopping point was at an edge.
     int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
-    if (counts > (int16_t)edgeToCenterEncoderTicks * 2)
+
+    if (lastStopAtEdge && counts > (int16_t)edgeToCenterEncoderTicks * 2)
     {
       changeStateToScanning();
     }
@@ -319,6 +329,7 @@ class StateDriving : public RobotState
     if (objectSeen)
     {
       changeStateToPushing();
+      return;
     }
   }
 } stateDriving;
@@ -410,6 +421,7 @@ class StateScanning : public RobotState
 
   void setup()
   {
+    lastStopAtEdge = false;
     degreesTurned = 0;
     angleBase = 0;
     turnSensorReset();
@@ -478,6 +490,7 @@ class StateAnalyzingBorder : public RobotState
     encoders.getCountsAndResetRight();
     motors.setSpeeds(analyzeSpeed, analyzeSpeed);
     lcd.print(F("analyze"));
+    lastStopAtEdge = true;
   }
 
   void loop()
