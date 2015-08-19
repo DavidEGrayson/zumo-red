@@ -32,13 +32,6 @@ const uint16_t analyzeSpeed = 100;
 // The speed used when turning towards the center.
 const uint16_t turnCenterSpeed = 400;
 
-// These two variables specify the speeds to apply to the motors
-// when veering left or veering right.  While the robot is
-// driving forward, it uses its proximity sensors to scan for
-// objects ahead of it and tries to veer towards them.
-const uint16_t veerSpeedLow = 0;
-const uint16_t veerSpeedHigh = 250;
-
 // The speed that the robot drives when it thinks it is pushing or
 // about to push an opponent.
 const uint16_t rammingSpeed = 400;
@@ -74,7 +67,7 @@ const uint16_t edgeToCenterEncoderTicks = 2180;
 
 // The number of encoder ticks to travel when backing away from the
 // edge.
-const uint16_t reverseEncoderTicks = 900;
+const uint16_t reverseEncoderTicks = 400;
 
 // The number of encoder ticks of distance separating the middle and
 // side line sensors.
@@ -100,6 +93,8 @@ Direction scanDir = DirectionLeft;
 
 Direction turnCenterDir;
 uint32_t turnCenterAngle;
+
+uint16_t borderAnalyzeEncoderCounts;
 
 // The time, in milliseconds, that we entered the current top-level state.
 uint16_t stateStartTime;
@@ -139,6 +134,12 @@ void displayUpdated()
 {
   displayTime = millis();
   displayCleared = false;
+}
+
+uint32_t calculateTurnCenterAngle(uint16_t counts)
+{
+  return ((uint32_t)turnAngle45 * 4) -
+    (uint32_t)(0x28BE60DB * atan((double)counts / sensorDistance));
 }
 
 extern RobotState * robotState;
@@ -257,6 +258,15 @@ class StateTurningToCenter : public RobotState
     if (angle > turnCenterAngle && angle < turnAngle45 * 7)
     {
       changeStateToDriving();
+
+      /** // Uncomment to test the analyzing algorithms.
+      motors.setSpeeds(0, 0);
+      lcd.clear();
+      lcd.print(borderAnalyzeEncoderCounts);
+      lcd.gotoXY(0, 1);
+      lcd.print((((uint32_t)turnCenterAngle >> 16) * 360) >> 16);
+      while(1){ }
+      **/
     }
   }
 } stateTurningToCenter;
@@ -385,7 +395,7 @@ class StateBacking : public RobotState
     int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
     if (-counts > (int16_t)reverseEncoderTicks * 2)
     {
-      changeStateToScanning();
+      changeStateToTurningToCenter();
     }
   }
 } stateBacking;
@@ -479,7 +489,8 @@ class StateAnalyzingBorder : public RobotState
     {
       // Something is wrong, stop analyzing.
       turnCenterAngle = turnAngle45 * 3;
-      changeStateToTurningToCenter();
+      changeStateToBacking();
+      //changeStateToTurningToCenter();
     }
 
     // Check the middle line sensor.
@@ -504,16 +515,10 @@ class StateAnalyzingBorder : public RobotState
 
       if (counts < 0) { counts = 0; }
 
-      turnCenterAngle = (turnAngle45 * 4) - 0x517CC1B7 * atan(counts / sensorDistance);
+      borderAnalyzeEncoderCounts = counts;
+      turnCenterAngle = calculateTurnCenterAngle(counts);
 
-      // Uncomment to show calculated angle
-      /**
-      motors.setSpeeds(0, 0);
-      lcd.clear();
-      lcd.print(((turnCenterAngle >> 16) * 360) >> 16);
-      delay(10000); **/
-
-      changeStateToTurningToCenter();
+      changeStateToBacking();
     }
   }
 } stateAnalyzingBorder;
