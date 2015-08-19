@@ -482,43 +482,41 @@ class StateAnalyzingBorder : public RobotState
 
   void loop()
   {
-    motors.setSpeeds(analyzeSpeed, analyzeSpeed);
-
-    int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
-    if (counts > 1600)
+    if (timeInThisState() < 1000)
     {
-      // Something is wrong, stop analyzing.
-      turnCenterAngle = turnAngle45 * 3;
-      changeStateToBacking();
-      //changeStateToTurningToCenter();
+      // For the first second of this state, drive slowly.
+      motors.setSpeeds(analyzeSpeed, analyzeSpeed);
     }
+    else
+    {
+      // The state lasted too long, so we are probably pushing against
+      // a robot and should drive at ramming speed.  Changing to the
+      // Pushing state wouldn't help because it would detect the
+      // border and immediate go back here.
+      motors.setSpeeds(rammingSpeed, rammingSpeed);
+    }
+
+    // Check the encoders.
+    int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
 
     // Check the middle line sensor.
     lineSensors.read(lineSensorValues);
     if (lineSensorValues[1] < lineSensorThreshold)
     {
-      /** Uncomment to show encoder counts and angle
-      turnSensorReset();
-      int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
-      lcd.clear();
-      lcd.print(counts);
-      buzzer.playFromProgramSpace(beep1);
-      motors.setSpeeds(0, 0);
-      while(1)
-      {
-        turnSensorUpdate();
-        lcd.gotoXY(0, 1);
-        lcd.print((((int32_t)turnAngle >> 16) * 360) >> 16);
-        lcd.print(F("   "));
-      }
-      **/
-
       if (counts < 0) { counts = 0; }
 
       borderAnalyzeEncoderCounts = counts;
       turnCenterAngle = calculateTurnCenterAngle(counts);
 
       changeStateToBacking();
+    }
+
+    // Make sure we don't travel too far.
+    if (counts > 1600)
+    {
+      turnCenterAngle = turnAngle45 * 3;
+      changeStateToBacking();
+      //changeStateToTurningToCenter();
     }
   }
 } stateAnalyzingBorder;
