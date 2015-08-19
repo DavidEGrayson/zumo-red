@@ -21,7 +21,7 @@ const uint16_t reverseSpeed = 400;
 
 // The speed that the robot uses when turning.
 const uint16_t turnSpeedHigh = 400;
-const uint16_t turnSpeedLow = 100;
+const uint16_t turnSpeedLow = 400;
 
 // The speed that the robot usually uses when moving forward.
 const uint16_t forwardSpeed = 400;
@@ -30,7 +30,7 @@ const uint16_t forwardSpeed = 400;
 const uint16_t analyzeSpeed = 100;
 
 // The speed used when turning towards the center.
-const uint16_t turnCenterSpeed = 200;
+const uint16_t turnCenterSpeed = 400;
 
 // These two variables specify the speeds to apply to the motors
 // when veering left or veering right.  While the robot is
@@ -449,11 +449,10 @@ class StateScanning : public RobotState
     }
     else if (time > scanTimeMin)
     {
-      // If we detect anything with the front sensor, then start
-      // driving forwards.
+      // If we detect anything with the front sensor, then go push it.
       if (objectSeen)
       {
-        changeStateToDriving();
+        changeStateToPushing();
       }
     }
   }
