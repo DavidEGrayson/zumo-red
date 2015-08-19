@@ -76,6 +76,10 @@ const uint16_t edgeToCenterEncoderTicks = 2180;
 // edge.
 const uint16_t reverseEncoderTicks = 900;
 
+// The number of encoder ticks of distance separating the middle and
+// side line sensors.
+const uint16_t sensorDistance = 440;
+
 const char beep1[] PROGMEM = "!>c32";
 
 Zumo32U4Buzzer buzzer;
@@ -456,6 +460,7 @@ class StateScanning : public RobotState
 } stateScanning;
 void changeStateToScanning() { changeState(stateScanning); }
 
+// TODO: after analyzing, maybe drive backwards to get back to where you were?
 class StateAnalyzingBorder : public RobotState
 {
   void setup()
@@ -469,6 +474,14 @@ class StateAnalyzingBorder : public RobotState
   void loop()
   {
     motors.setSpeeds(analyzeSpeed, analyzeSpeed);
+
+    int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
+    if (counts > 1600)
+    {
+      // Something is wrong, stop analyzing.
+      turnCenterAngle = turnAngle45 * 3;
+      changeStateToTurningToCenter();
+    }
 
     // Check the middle line sensor.
     lineSensors.read(lineSensorValues);
@@ -490,10 +503,9 @@ class StateAnalyzingBorder : public RobotState
       }
       **/
 
-      int16_t counts = encoders.getCountsLeft() + encoders.getCountsRight();
       if (counts < 0) { counts = 0; }
 
-      turnCenterAngle = (turnAngle45 * 4) - 0x517CC1B7 * atan(counts/440);
+      turnCenterAngle = (turnAngle45 * 4) - 0x517CC1B7 * atan(counts / sensorDistance);
 
       // Uncomment to show calculated angle
       /**
