@@ -141,8 +141,12 @@ void displayUpdated()
 uint32_t calculateTurnCenterAngle(uint16_t counts)
 {
   // This fudge factor helps us account for the fact that we have
-  // simple algorithms that make us overshoot the threshold.
+  // simple turning algorithms that make us overshoot the threshold.
   float fudge = 0.9;
+
+  // The number 0x28BE60DB is the conversion factor needed to convert
+  // from radians (the unit returned by atan) to our internal angle
+  // units.  It is approximately 0x80000000 divided by pi.
 
   return ((uint32_t)turnAngle45 * 4 * fudge) -
     (uint32_t)((0x28BE60DB * fudge) * atan((double)counts / sensorDistance));
@@ -481,7 +485,6 @@ class StateScanning : public RobotState
 } stateScanning;
 void changeStateToScanning() { changeState(stateScanning); }
 
-// TODO: after analyzing, maybe drive backwards to get back to where you were?
 class StateAnalyzingBorder : public RobotState
 {
   void setup()
@@ -529,7 +532,6 @@ class StateAnalyzingBorder : public RobotState
     {
       turnCenterAngle = turnAngle45 * 3;
       changeStateToBacking();
-      //changeStateToTurningToCenter();
     }
   }
 } stateAnalyzingBorder;
